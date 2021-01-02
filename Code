@@ -1,0 +1,768 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Nov 22 09:32:31 2020
+
+@author: Jawad
+"""
+##############################################################################
+#REGRESSION FULL CODE to line 416
+##############################################################################
+
+##############################################################################
+#Importing all packages
+##############################################################################
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn import metrics
+from sklearn.linear_model import Ridge
+from sklearn.linear_model import Lasso
+
+
+from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
+
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split
+
+from sklearn.ensemble import IsolationForest
+from numpy import where
+
+##############################################################################
+#Data Preprocessing
+##############################################################################
+#Importing the data
+df=pd.read_excel('D:\\Downloads\\Kickstarter.xlsx')
+#Drop observations
+df.drop( df[ (df['state'] !='failed') & (df['state']!='successful')].index , inplace=True)
+
+#conert goal to used
+df['goal_in_usd'] =df['goal']*df['static_usd_rate']
+#dropping after launch and insignificant predictors
+df=df.drop(columns=['project_id','name','disable_communication','currency','pledged','goal','static_usd_rate','state',
+                    'deadline','created_at','state_changed_at','launched_at',
+                    'state_changed_at_month', 'state_changed_at_day','state_changed_at_yr','state_changed_at_hr',
+                    'backers_count','spotlight','staff_pick',
+                    'name_len','blurb_len','name_len_clean','blurb_len_clean',
+                    'state_changed_at_weekday','launch_to_state_change_days','launched_at_weekday'
+           ])
+#drop na
+df=df.dropna()
+#specify x and y
+y=df['usd_pledged']
+X=df.drop(columns=['usd_pledged'])
+X=pd.get_dummies(X,columns=['country','category','deadline_weekday','created_at_weekday','created_at_yr','deadline_yr','deadline_month','created_at_month'])
+
+#Removing anomalies from X:
+
+numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+
+num_col = X.select_dtypes(include=numerics)
+iforest=IsolationForest(n_estimators=100,contamination=0.02,random_state=5)
+
+pred=iforest.fit_predict(num_col)
+score=iforest.decision_function(num_col)
+
+
+non_anom_index=where(pred==1)
+X=X.iloc[non_anom_index]
+y=y.iloc[non_anom_index]
+#Removing anomalies from target variable:
+iforest=IsolationForest(n_estimators=100,contamination=0.01,random_state=5)
+
+y_anom=y.values.reshape(-1,1)
+pred=iforest.fit_predict(y_anom)
+score=iforest.decision_function(y_anom)
+
+
+non_anom_index=where(pred==1)
+X=X.iloc[non_anom_index]
+y=y.iloc[non_anom_index]
+#############################################################################
+#Feature selection:
+##############################################################################
+#Lasso:#
+scaler=StandardScaler()
+X_std_Lasso=scaler.fit_transform(X)
+model_FS1=Lasso(alpha=0.01,random_state=5)
+model_FS1.fit(X_std_Lasso,y)
+model_FS1.coef_
+rating=pd.DataFrame(list(zip(X.columns,model_FS1.coef_)),columns=["predictor","importance"])
+predictors = rating[rating['importance'] != 0]
+list1 = predictors['predictor']
+X = X[X.columns.intersection(list1)]
+
+
+#Random Forest
+randomforest=RandomForestRegressor(random_state=0)
+model_FS2=randomforest.fit(X,y)
+model_FS2.feature_importances_
+rating2=pd.DataFrame(list(zip(X.columns,model_FS2.feature_importances_*100)),columns=["predictor","importance"])
+
+
+
+##############################################################################
+#Regression
+##############################################################################
+
+##############################################################################
+#Ridge and Lasso
+##############################################################################
+min=999999999999999
+wanted=60
+for i in range(40,80,10):
+    RidgeModel=Ridge(alpha=i)
+    Model=RidgeModel.fit(X,y)
+    scores=cross_val_score(estimator=Model,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        wanted=i
+print(min)
+print(wanted)
+#MSE for Ridge is : 1324079805.4738545
+#alpha=50
+
+
+
+scaler=StandardScaler()
+X_std=scaler.fit_transform(X)
+
+min=999999999999
+wanted=130
+for i in range(55,65,3):
+    LassoModel=Lasso(alpha=i)
+    Model=LassoModel.fit(X_std,y)
+    scores=cross_val_score(estimator=Model,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        wanted=i
+print(min)
+print(wanted)
+#MSE for Lasso is:  1322936670.9433684
+
+
+##############################################################################
+#Multiple Linear Regression#
+##############################################################################
+LinearModel=LinearRegression()
+Model1=LinearModel.fit(X,y)
+
+scores=cross_val_score(estimator=Model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+cross_score=np.average(scores)
+#MSE is: 1321209138.0229647
+
+
+##############################################################################
+#KNN#
+##############################################################################
+X_std=scaler.fit_transform(X)
+
+min=99999999999999999
+wanted=100
+for i in range (5,60,10):
+    knn = KNeighborsRegressor(n_neighbors=i)
+    model2 = knn.fit(X_std,y)
+    scores=cross_val_score(estimator=model2,X=X_std,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        wanted=i
+print(min)
+print(wanted)
+#MSE is: 1354946779.0118937 at 55 neighbours
+##############################################################################
+#ANN#
+##############################################################################
+
+for i in range (2,15):
+    model3 = MLPRegressor(hidden_layer_sizes=(i),max_iter=1000)
+    scores = cross_val_score(estimator=model3, X=X, y=y, cv=5)
+    print(i,':',np.average(scores))
+#Best score at 10 hidden layers
+mlp=MLPRegressor(hidden_layer_sizes=10,max_iter=1000,random_state=0)
+model4=mlp.fit(X,y)
+scores=cross_val_score(estimator=model4,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+cross_score=np.average(scores)
+print("MSE is : "+str(-cross_score))
+#MSE is : 1309619714.3239331
+##############################################################################
+#RandomForest#
+##############################################################################
+
+#max features
+min=99999999999999
+max_features=['auto','sqrt','log2']
+wanted=''
+for i in max_features:
+    print("i= "+str(i))
+    RF=RandomForestRegressor(random_state=5,max_features=i,n_estimators=100)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        wanted=i
+print(min)
+print(wanted)
+
+#we will use sqrt
+
+
+#max depth
+min=99999999999999
+max_depth_n=0
+for i in range(3,12):
+    print("i= "+str(i))
+    RF=RandomForestRegressor(random_state=5,max_depth=i,n_estimators=100)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        max_depth_n=i
+print(min)
+print(max_depth_n)
+#max depth:7
+
+
+#Min sample split
+min=99999999999999
+min_sample_split_n=40
+for i in range(110,120,2):
+    print("i= "+str(i))
+    RF=RandomForestRegressor(random_state=5,n_estimators=100,min_samples_split=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        min_sample_split_n=i
+print(min)
+print(min_sample_split_n)
+# min sample split:118
+
+
+
+#Min sample leaf
+min=99999999999999
+min_sample_leaf_n=40
+for i in range(1,18,3):
+    print("i= "+str(i))
+    RF=RandomForestRegressor(random_state=5,n_estimators=100,min_samples_leaf=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        min_sample_leaf_n=i
+print(min)
+print(min_sample_leaf_n)
+#min samples leaf:7
+
+
+
+#n_estimators
+min=99999999999999
+ne=500
+for i in range(100,501,100):
+    print("i= "+str(i))
+    RF=RandomForestRegressor(random_state=5,n_estimators=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        ne=i
+print(min)
+print(ne)
+#n estimators:200
+
+
+#Overall RF model:
+#Random Forest Model
+RF=RandomForestRegressor(random_state=5,n_estimators=200,min_samples_leaf=7, min_samples_split=118,max_depth=7,max_features='sqrt')
+model1=RF.fit(X,y)
+scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+cross_score=np.average(scores)
+print(-cross_score)
+#1217863453.7951503
+
+
+
+##############################################################################
+#Gradient boosting
+##############################################################################
+
+
+
+#max features
+min=99999999999999
+max_features=['auto','sqrt','log2']
+wanted=''
+for i in max_features:
+    print("i= "+str(i))
+    GB=GradientBoostingRegressor(random_state=5,max_features=i,n_estimators=100)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        wanted=i
+print(min)
+print(wanted)
+
+#we will use auto
+#MSE:1193004492.533379
+
+#max depth
+min=99999999999999
+max_depth_n=0
+for i in range(2,30,4):
+    print("i= "+str(i))
+    GB=GradientBoostingRegressor(random_state=5,max_depth=i,n_estimators=100)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        max_depth_n=i
+print(min)
+print(max_depth_n)
+#max depth:2
+#MSE:1210766058.0502644
+
+#Min sample split
+min=99999999999999
+min_sample_split_n=40
+for i in range(40,47,1):
+    print("i= "+str(i))
+    GB=GradientBoostingRegressor(random_state=5,n_estimators=100,min_samples_split=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        min_sample_split_n=i
+print(min)
+print(min_sample_split_n)
+# min sample split:42
+#MSE:1189660370.177148
+
+#Min sample leaf
+min=99999999999999
+min_sample_leaf_n=40
+for i in range(1,20,1):
+    print("i= "+str(i))
+    GB=GradientBoostingRegressor(random_state=5,n_estimators=100,min_samples_leaf=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        min_sample_leaf_n=i
+print(min)
+print(min_sample_leaf_n)
+#min samples leaf:13
+#MSE:1183719629.090862
+
+#n_estimators
+min=99999999999999
+ne=500
+for i in range(40,500,10):
+    print("i= "+str(i))
+    GB=GradientBoostingRegressor(random_state=5,n_estimators=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+    cross_score=np.average(scores)
+    if -cross_score<min:
+        min=-cross_score
+        ne=i
+print(min)
+print(ne)  
+#90
+#1191530815.7318854
+
+#final Gradient boosting model
+GB=GradientBoostingRegressor(random_state=5,n_estimators=90,min_samples_leaf=13, min_samples_split=42,max_depth=2,max_features='auto')
+model1=GB.fit(X,y)
+scores=cross_val_score(estimator=model1,X=X,y=y,cv=5,scoring='neg_mean_squared_error')
+cross_score=np.average(scores)
+print(-cross_score)
+#1206516288.8482893
+
+
+
+X_train,X_test,y_train,y_test=train_test_split(X,y,test_size=0.3,random_state=5)
+GB=GradientBoostingRegressor(random_state=5,n_estimators=90,min_samples_leaf=13, min_samples_split=42,max_depth=2,max_features='auto')
+model_train=GB.fit(X_train,y_train)
+y_test_pred=model_train.predict(X_test)
+y_train_pred=model_train.predict(X_train)
+print("MSE is : "+str(mean_squared_error(y_test,y_test_pred)))
+print("MSE is : "+str(mean_squared_error(y_train,y_train_pred)))
+
+#MSE is : 1208405835.3311667
+#MSE is : 1088157620.0034745
+
+
+##############################################################################
+#Classification FULL CODE
+##############################################################################
+##############################################################################
+#Importing all packages
+##############################################################################
+import pandas as pd
+import numpy as np
+
+from sklearn.model_selection import train_test_split
+from sklearn import metrics
+
+from sklearn.linear_model import Ridge
+from sklearn.linear_model import Lasso
+
+
+
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.ensemble import IsolationForest
+from numpy import where
+##############################################################################
+#Data Preprocessing
+##############################################################################
+
+#Importing the data
+df=pd.read_excel('D:\\Downloads\\Kickstarter.xlsx')
+#Drop observations
+df.drop( df[ (df['state'] !='failed') & (df['state']!='successful')].index , inplace=True)
+
+#conert goal to used
+df['goal_in_usd'] =df['goal']*df['static_usd_rate']
+#drop unneccessary columns
+
+df=df.drop(columns=['project_id','name','disable_communication','currency','pledged','usd_pledged','goal','static_usd_rate',
+                    'deadline','created_at','state_changed_at','launched_at',
+                    'state_changed_at_month', 'state_changed_at_day','state_changed_at_yr','state_changed_at_hr',
+                    'backers_count','spotlight','staff_pick',
+                    'state_changed_at_weekday','launch_to_state_change_days','launched_at_weekday'
+           ])
+#create 1 column for state
+df.loc[df.state =='successful', 'state'] = 0
+df.loc[df.state =='failed', 'state'] = 1
+#drop na
+df=df.dropna()
+#specify x and y
+y=df['state']
+y=y.astype('int')
+
+
+X=df.drop(columns=['state'])
+X=pd.get_dummies(X,columns=['country','category','deadline_weekday','created_at_weekday'])
+
+#Removing anomalies:
+
+numerics = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+
+num_col = X.select_dtypes(include=numerics)
+iforest=IsolationForest(n_estimators=100,contamination=0.02)
+
+pred=iforest.fit_predict(num_col)
+score=iforest.decision_function(num_col)
+
+
+non_anom_index=where(pred==1)
+X=X.iloc[non_anom_index]
+y=y.iloc[non_anom_index]
+##############################################################################
+#Feature selection:
+##############################################################################
+
+lr = LogisticRegression(max_iter=5000)
+rfe = RFE(lr, n_features_to_select=50)
+model = rfe.fit(X, y)
+model.ranking_
+rating=pd.DataFrame(list(zip(X.columns,model.ranking_)), columns = ['predictor','ranking'])
+
+###############################################################################
+#Classification#
+##############################################################################
+
+##############################################################################
+#KNN Classifier
+##############################################################################
+scaler=StandardScaler()
+X_std=scaler.fit_transform(X)
+
+max=0
+wanted=100
+for i in range (2,10):
+    knn = KNeighborsClassifier(n_neighbors=i)
+    model2 = knn.fit(X_std,y)
+    scores=cross_val_score(estimator=model2,X=X_std,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        wanted=i
+print(max)
+print(wanted)
+#cv score: 0.6994764796024235
+#7 neighbors
+##############################################################################
+#ANN Classifier
+##############################################################################
+max=0
+wanted=100
+for i in range (2,15):
+    model3 = MLPClassifier(hidden_layer_sizes=(i),max_iter=1000)
+    scores = cross_val_score(estimator=model3, X=X, y=y, cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        wanted=i
+print(max)
+print(wanted)
+#CV score is : 0.6719792344641907
+# 2 hidden layers
+##############################################################################
+#Random Forest Classifier
+#RandomForest#
+##############################################################################
+
+#max features
+max=0
+max_features=['auto','sqrt','log2']
+wanted=''
+for i in max_features:
+    print("i= "+str(i))
+    RF=RandomForestClassifier(random_state=5,max_features=i,n_estimators=100)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        wanted=i
+print(max)
+print(wanted)
+
+#we will use log2
+
+
+#max depth
+max=0
+max_depth_n=0
+for i in range(1,32,4):
+    print("i= "+str(i))
+    RF=RandomForestClassifier(random_state=5,max_depth=i,n_estimators=100)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        max_depth_n=i
+print(max)
+print(max_depth_n)
+#max depth:21
+
+
+#Min sample split
+max=0
+min_sample_split_n=40
+for i in range(2,20,1):
+    print("i= "+str(i))
+    RF=RandomForestClassifier(random_state=5,n_estimators=100,min_samples_split=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        min_split_n=i
+print(max)
+print(min_split_n)
+# min sample split:17
+
+
+#Min sample leaf
+max=0
+min_sample_leaf_n=40
+for i in range(1,10,1):
+    print("i= "+str(i))
+    RF=RandomForestClassifier(random_state=5,n_estimators=100,min_samples_leaf=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        min_sample_leaf_n=i
+print(max)
+print(min_sample_leaf_n)
+#min samples leaf:6
+
+
+#n_estimators
+max=0
+ne=500
+for i in range(100,501,100):
+    print("i= "+str(i))
+    RF=RandomForestClassifier(random_state=5,n_estimators=i)
+    model1=RF.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        ne=i
+print(max)
+print(ne)
+#n estimators:500
+
+
+#Best RF Model:
+RF=RandomForestClassifier(random_state=5,n_estimators=500,min_samples_leaf=6, min_samples_split=17,max_depth=21,max_features='log2')
+model1=RF.fit(X,y)
+scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+cross_score=np.average(scores)
+print(cross_score)
+#0.7473620474777066
+
+##############################################################################
+#Gradient boosting classifier
+##############################################################################
+#max features
+max=0
+max_features=['auto','sqrt','log2']
+wanted=''
+for i in max_features:
+    print("i= "+str(i))
+    GB=GradientBoostingClassifier(random_state=5,max_features=i,n_estimators=100)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        wanted=i
+print(max)
+print(wanted)
+
+#we will use auto
+#cv score: 0.7579873205473378
+
+#max depth
+max=0
+max_depth_n=0
+for i in range(2,30,4):
+    print("i= "+str(i))
+    GB=GradientBoostingClassifier(random_state=5,max_depth=i,n_estimators=100)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        max_depth_n=i
+print(max)
+print(max_depth_n)
+#max depth:6
+#MSE:0.7578436939764223
+
+#Min sample split
+max=0
+min_sample_split_n=40
+for i in range(2,20,1):
+    print("i= "+str(i))
+    GB=GradientBoostingClassifier(random_state=5,n_estimators=100,min_samples_split=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        min_split_n=i
+print(max)
+print(min_split_n)
+# min sample split:9
+#cv score: 0.7587053502959785
+
+#Min sample leaf
+max=0
+min_sample_leaf_n=40
+for i in range(1,10,1):
+    print("i= "+str(i))
+    GB=GradientBoostingClassifier(random_state=5,n_estimators=100,min_samples_leaf=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        min_sample_leaf_n=i
+print(max)
+print(min_sample_leaf_n)
+#min samples leaf:3
+#cv score: 0.7591358691379442
+
+#n_estimators
+max=0
+ne=500
+for i in range(40,250,10):
+    print("i= "+str(i))
+    GB=GradientBoostingClassifier(random_state=5,n_estimators=i)
+    model1=GB.fit(X,y)
+    scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+    cross_score=np.average(scores)
+    if cross_score>max:
+        max=cross_score
+        ne=i
+print(max)
+print(ne)
+#250 estimator
+#cv score: 0.7620792858882771
+
+
+
+#final Gradient boosting model
+GB=GradientBoostingClassifier(random_state=5,n_estimators=40,min_samples_leaf=3, min_samples_split=9,max_depth=6,max_features='auto')
+model1=GB.fit(X,y)
+scores=cross_val_score(estimator=model1,X=X,y=y,cv=5)
+cross_score=np.average(scores)
+print(cross_score)
+#CV:0.7564796281999894
+
+X_train,X_test,y_train,y_test=train_test_split(X,y,test_size=0.3,random_state=5)
+GB=GradientBoostingClassifier(random_state=5,n_estimators=40,min_samples_leaf=3, min_samples_split=9,max_depth=6,max_features='auto')
+model_train=GB.fit(X_train,y_train)
+y_test_pred=model_train.predict(X_test)
+y_train_pred=model_train.predict(X_train)
+
+print("CV for test is : "+str(accuracy_score(y_test,y_test_pred)))
+print("CV for training is : "+str(accuracy_score(y_train,y_train_pred)))
+a=metrics.confusion_matrix(y_test,y_test_pred)
+b=metrics.precision_score(y_test,y_test_pred)
+c=metrics.recall_score(y_test,y_test_pred)
+d=metrics.f1_score(y_test,y_test_pred)
+print("Confusion matrix: "+str(a))
+print("Precision score: "+str(b))
+print("Recall score: "+str(c))
+print("F1 score: "+str(d))
+#CV for test is : 0.7547260110074181
+#CV for training is : 0.8138461538461539
+#Confusion matrix: [[ 744  638]
+#                   [ 361 2436]]
+#Precision score: 0.7924528301886793
+#Recall score: 0.8709331426528424
+#F1 score: 0.8298415942769545
